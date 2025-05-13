@@ -81,6 +81,13 @@ void parseEruvJson()
   Serial.println("Eruv polygons parsed successfully.");
 }
 
+
+// the values in the NMEA sentences are in the format DDMM.MMMM
+// where DD is degrees and MM.MMMM is minutes
+// this function converts that to decimal degrees
+// for example, 1234.5678 becomes 12.5763 degrees
+// 1234.5678 = 12 degrees + 34.5678 minutes
+// 12 degrees + (34.5678/60) = 12.5763 degrees
 float decimalDegrees(float nmeaCoord) {
   uint16_t wholeDegrees = 0.01*nmeaCoord;
   return wholeDegrees + (nmeaCoord - 100.0*wholeDegrees)/60.0;
