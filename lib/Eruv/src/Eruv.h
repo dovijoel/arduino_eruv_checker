@@ -10,7 +10,7 @@ struct Coordinate {
 };
 
 // Function to check if a point is inside a polygon
-bool isPointInPolygon(const std::vector<Coordinate>& polygon, const Coordinate& point);
-bool isPointInEruv(const std::vector<std::vector<Coordinate>>& eruvs, const std::vector<std::vector<Coordinate>>& exclusions, const Coordinate& point);
+bool isPointInPolygon(const std::vector<Coordinate>& polygon, const Coordinate& point, Print& logger);
+bool isPointInEruv(const std::vector<std::vector<Coordinate>>& eruvs, const std::vector<std::vector<Coordinate>>& exclusions, const Coordinate& point, Print& logger);
 
 #endif // IN_ERUV_H

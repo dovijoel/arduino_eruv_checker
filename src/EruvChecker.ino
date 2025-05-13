@@ -133,7 +133,9 @@ void nmeaReceived(uint8_t *data, size_t len)
               WebSerial.println(currentLocation.longitude);
               
               // Check if the current location is inside the eruv
-              if (isPointInEruv(eruvs, exclusions, currentLocation)) {
+              WebSerial.println("Number of eruvs: " + String(eruvs.size()));
+              WebSerial.println("Number of exclusions: " + String(exclusions.size()));
+              if (isPointInEruv(eruvs, exclusions, currentLocation, WebSerial)) {
                 WebSerial.println("Inside the eruv.");
               } else {
                 WebSerial.println("Outside the eruv.");
