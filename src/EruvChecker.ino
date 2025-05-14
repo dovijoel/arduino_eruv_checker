@@ -93,21 +93,13 @@ float decimalDegrees(float nmeaCoord) {
   return wholeDegrees + (nmeaCoord - 100.0*wholeDegrees)/60.0;
 }
 
-void nmeaReceived(uint8_t *data, size_t len)
-{
-  WebSerial.println("Received Data...");
-   String d = "";
-  for(int i=0; i < len; i++){
-    d += char(data[i]);
-  }
-  if (d.length() > 0) {
-          WebSerial.println("Received NMEA string: " + d);
-
-          // Parse the NMEA string
-          char nmeaCharArray[d.length() + 1];
-          d.toCharArray(nmeaCharArray, d.length() + 1);
+bool nmeaCheck(String nmea) {
+  // Parse the NMEA string
+  bool isInEruv = false;
+          char nmeaCharArray[nmea.length() + 1];
+          nmea.toCharArray(nmeaCharArray, nmea.length() + 1);
           if (GPS.parse(nmeaCharArray)) { // Parse the NMEA sentence
-            if (true) { // Check if GPS has a valid fix
+            if (true) { // Check if GPS has a valid fix, keeping true for debugging
               WebSerial.print("Location: ");
               WebSerial.print(GPS.latitude, 4);
               WebSerial.print(GPS.lat);
@@ -136,6 +128,7 @@ void nmeaReceived(uint8_t *data, size_t len)
               WebSerial.println("Number of eruvs: " + String(eruvs.size()));
               WebSerial.println("Number of exclusions: " + String(exclusions.size()));
               if (isPointInEruv(eruvs, exclusions, currentLocation, WebSerial)) {
+                isInEruv = true;
                 WebSerial.println("Inside the eruv.");
               } else {
                 WebSerial.println("Outside the eruv.");
@@ -146,9 +139,20 @@ void nmeaReceived(uint8_t *data, size_t len)
           } else {
             WebSerial.println("Failed to parse NMEA string.");
           }
+        return isInEruv;
+}
 
-          // Clear the buffer for the next sentence
-          d = "";
+void nmeaReceived(uint8_t *data, size_t len)
+{
+  WebSerial.println("Received Data...");
+   String d = "";
+  for(int i=0; i < len; i++){
+    d += char(data[i]);
+  }
+  if (d.length() > 0) {
+          WebSerial.println("Received NMEA string: " + d);
+        nmeaCheck(d);
+          
         }
       } 
 
@@ -160,7 +164,10 @@ void setup()
   // also spit it out
   Serial.begin(115200);
   Serial.println("Starting eruv checker.");
-
+  if (!SPIFFS.begin()) {
+      Serial.println("Card Mount Failed");
+      return;
+    }
   parseEruvJson();
 
   // 9600 NMEA is the default baud rate for Adafruit MTK GPS's- some use 4800
@@ -211,81 +218,21 @@ void setup()
 
 void loop() // run over and over again
 {
-  // // read data from the GPS in the 'main loop'
-  // char c = GPS.read();
-  // // if you want to debug, this is a good time to do it!
-  // if (GPSECHO)
-  //   if (c)
-  //     WebSerial.print(c);
-  // // if a sentence is received, we can check the checksum, parse it...
-  // if (GPS.newNMEAreceived())
-  // {
-  //   // a tricky thing here is if we print the NMEA sentence, or data
-  //   // we end up not listening and catching other sentences!
-  //   // so be very wary if using OUTPUT_ALLDATA and trying to print out data
-  //   WebSerial.println(GPS.lastNMEA()); // this also sets the newNMEAreceived() flag to false
-  //   if (!GPS.parse(GPS.lastNMEA()))    // this also sets the newNMEAreceived() flag to false
-  //     return;                          // we can fail to parse a sentence in which case we should just wait for another
-  // }
-
-  // // approximately every 2 seconds or so, print out the current stats
-  // if (millis() - timer > 2000)
-  // {
-  //   timer = millis(); // reset the timer
-  // WebSerial.print("\nTime: ");
-  // if (GPS.hour < 10)
-  // {
-  //   WebSerial.print('0');
-  // }
-  // WebSerial.print(GPS.hour, DEC);
-  // WebSerial.print(':');
-  // if (GPS.minute < 10)
-  // {
-  //   WebSerial.print('0');
-  // }
-  // WebSerial.print(GPS.minute, DEC);
-  // WebSerial.print(':');
-  // if (GPS.seconds < 10)
-  // {
-  //   WebSerial.print('0');
-  // }
-  // WebSerial.print(GPS.seconds, DEC);
-  // WebSerial.print('.');
-  // if (GPS.milliseconds < 10)
-  // {
-  //   WebSerial.print("00");
-  // }
-  // else if (GPS.milliseconds > 9 && GPS.milliseconds < 100)
-  // {
-  //   WebSerial.print("0");
-  // }
-  // WebSerial.println(GPS.milliseconds);
-  // WebSerial.print("Date: ");
-  // WebSerial.print(GPS.day, DEC);
-  // WebSerial.print('/');
-  // WebSerial.print(GPS.month, DEC);
-  // WebSerial.print("/20");
-  // WebSerial.println(GPS.year, DEC);
-  // WebSerial.print("Fix: ");
-  // WebSerial.print((int)GPS.fix);
-  // WebSerial.print(" quality: ");
-  // WebSerial.println((int)GPS.fixquality);
-  // if (GPS.fix)
-  // {
-  //   WebSerial.print("Location: ");
-  //   WebSerial.print(GPS.latitude, 4);
-  //   WebSerial.print(GPS.lat);
-  //   WebSerial.print(", ");
-  //   WebSerial.print(GPS.longitude, 4);
-  //   WebSerial.println(GPS.lon);
-  //   WebSerial.print("Speed (knots): ");
-  //   WebSerial.println(GPS.speed);
-  //   WebSerial.print("Angle: ");
-  //   WebSerial.println(GPS.angle);
-  //   WebSerial.print("Altitude: ");
-  //   WebSerial.println(GPS.altitude);
-  //   WebSerial.print("Satellites: ");
-  //   WebSerial.println((int)GPS.satellites);
-  // }
-  // }
+  // read data from the GPS in the 'main loop'
+  char c = GPS.read();
+  // if you want to debug, this is a good time to do it!
+  if (GPSECHO)
+    if (c)
+      WebSerial.print(c);
+  // if a sentence is received, we can check the checksum, parse it...
+  if (GPS.newNMEAreceived())
+  {
+    // a tricky thing here is if we print the NMEA sentence, or data
+    // we end up not listening and catching other sentences!
+    // so be very wary if using OUTPUT_ALLDATA and trying to print out data
+    WebSerial.println(GPS.lastNMEA());
+    nmeaCheck(GPS.lastNMEA()); // this also sets the newNMEAreceived() flag to false
+    if (!GPS.parse(GPS.lastNMEA()))    // this also sets the newNMEAreceived() flag to false
+      return;                          // we can fail to parse a sentence in which case we should just wait for another
+  }
 }
