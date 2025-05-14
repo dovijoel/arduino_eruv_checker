@@ -3241,6 +3241,60 @@ module NodeMCU_V3USBC_HolesLocate(idx=0) {
         children(0);
 }
 
+module usbc(depth = 1)
+{
+    usbc_width1 = 7.5 + 0.5;
+    usbc_width2 = 10 + 0.5;
+    usbc_height1 = 1.5 + 0.5;
+    usbc_height2 = 4 + 0.5;
+
+    width_offset = ((usbc_height2 - usbc_height1) / 2);
+    height_offset2 = (usbc_height1 / 1) + (width_offset * 1);
+
+    translate([width_offset, 0, 0])
+    {
+        cube([usbc_width1, depth, usbc_height2]);
+    }
+
+    translate([0, 0, 1.025])
+    {
+        cube([usbc_width2, depth, usbc_height1]);
+    }
+
+    translate([width_offset, depth, width_offset])
+    {
+        rotate([90, 0, 0])
+        {
+            cylinder(depth, width_offset, width_offset);
+        }
+    }
+
+    translate([width_offset, depth, height_offset2])
+    {
+        rotate([90, 0, 0])
+        {
+            cylinder(depth, width_offset, width_offset);
+        }
+    }
+
+
+    translate([usbc_width2 - width_offset, depth, width_offset])
+    {
+        rotate([90, 0, 0])
+        {
+            cylinder(depth, width_offset, width_offset);
+        }
+    }
+
+    translate([usbc_width2 - width_offset, depth, height_offset2])
+    {
+        rotate([90, 0, 0])
+        {
+            cylinder(depth, width_offset, width_offset);
+        }
+    }
+}
+
 // --- Render -----------------------------------
 // Only rendered if SCAD file is opened, not in USE mode...
-ESPDemo();
+//ESPDemo();

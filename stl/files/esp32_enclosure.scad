@@ -27,8 +27,8 @@ inner_x = board_x + fit_tol;
 inner_y = board_y + fit_tol;
 inner_z = case_z + 0.01;
 
-translate([0,0,case_z/2])lid();
-enclosure();
+translate([case_x+5,0,2]) lid();
+translate([0,0,case_z]) enclosure();
 
 module enclosure()
 {
@@ -37,12 +37,12 @@ module enclosure()
         union()
         {
             // Pin locations updated for new board size
-            pin_offset_x = (board_x/2) - 4.0;
-            pin_offset_y = (board_y/2) - 4.5;
-            translate([pin_offset_x, pin_offset_y,-case_z/2+5]) pin();
-            translate([-pin_offset_x, pin_offset_y,-case_z/2+5]) pin();
-            translate([pin_offset_x, -pin_offset_y,-case_z/2+5]) pin();
-            translate([-pin_offset_x, -pin_offset_y,-case_z/2+5]) pin();
+            pin_offset_x = (board_x/2) - 3.0;
+            pin_offset_y = (board_y/2) - 3.0;
+            translate([pin_offset_x, pin_offset_y,-case_z+5]) pin();
+            translate([-pin_offset_x, pin_offset_y,-case_z+5]) pin();
+            translate([pin_offset_x, -pin_offset_y,-case_z+5]) pin();
+            translate([-pin_offset_x, -pin_offset_y,-case_z+5]) pin();
         }
         //pin cutouts
         translate([-(board_x/2+2.5),0,-case_z/2+2.5])cube([2.9,board_y,5.1], center=true);
@@ -55,18 +55,20 @@ module enclosure()
         //inner void
         translate([0,0,-case_z/2])roundedBox([inner_x, inner_y, inner_z], 3, true, $fn=fn);
         //usb port opening (centered on Y axis)
-        translate([0,case_y/2-case_wall,5-case_z/2])rotate([90,0,0])roundedBox([8.5,8,26], 1, true, $fn=fn);
+        translate([-5,case_y/2-case_wall,3-case_z]) usbc(2.5);
+        //translate([0,case_y/2-case_wall,5-case_z])rotate([90,0,0])roundedBox([8.5,8,26], 1, true, $fn=fn) usbc();
+        
         //inner lid clip indents
         translate([case_x/2-2,0,3.75-case_z/2])rotate([90,0,0])cylinder(h=20, d=1, $fn=fn, center=true);
         translate([-(case_x/2-2),0,3.75-case_z/2])rotate([90,0,0])cylinder(h=20, d=1, $fn=fn, center=true);
     }
     //bottom (now flush)
-    translate([0,0,-case_z/2])roundedBox([case_x, case_y, 2], 3.97, true, $fn=fn);
+    translate([0,0,-case_z])roundedBox([case_x, case_y, 2], 3.97, true, $fn=fn);
     //inner lid clip
     translate([case_x/2-2,0,4.75-case_z/2])rotate([90,0,0])cylinder(h=20, d=1, $fn=fn, center=true);
     translate([-(case_x/2-2),0,4.75-case_z/2])rotate([90,0,0])cylinder(h=20, d=1, $fn=fn, center=true);
     // NodeMCU_V3USBC module for visualization
-    translate([0,0,5-case_z/2]) NodeMCU_V3USBC();
+    //translate([0,0,-case_z+7])rotate([180,0,0]) NodeMCU_V3USBC();
 }
 
 module lid()
@@ -101,9 +103,10 @@ module lid()
         led_y = -(case_y/2-case_wall-2.5); // y-position at new front edge
         led_z = 0; // on the lid surface
         led_spacing = 12; // spacing between LEDs for wider case
-        for (i = [-1,0,1])
+        for (i = [-1,0,1]) {
             translate([i*led_spacing, led_y, led_z])
                 cylinder(h=10, d=lightGuideDiameter, $fn=fn, center=true);
+        }
         //usb port opening
         translate([0,-case_y/2+case_wall,3.75])rotate([90,0,0])roundedBox([8.5,8,10], 1, true, $fn=fn);
         //vents Start
@@ -113,11 +116,32 @@ module lid()
         translate([-2,case_y/2-19,0])rotate([0,0,-30])roundedBox([20,1,10],0.5,true, $fn=fn);
         translate([-6,case_y/2-22,0])rotate([0,0,-30])roundedBox([10,1,10],0.5,true, $fn=fn);
     }
+    led_y = -(case_y/2-case_wall-2.5); // y-position at new front edge
+        led_z = 0; // on the lid surface
+        led_spacing = 12; // spacing between LEDs for wider case
+        for (i = [-1,0,1]) {
+            
+            if (i == -1) {
+                translate([(i*led_spacing)+3, led_y+3, led_z]) rotate([180,0,180])
+                linear_extrude(3.5) {
+        offset(r=0.01)
+        text("GPS", size = 3, font = font, halign="center");
+    }
+            }
+            if (i == 0) {
+                translate([(i*led_spacing)+3, led_y+3, led_z-3]) rotate([180,0,180])
+                text("OUT", 2);
+            }
+            if (i == 1) {
+                translate([(i*led_spacing)+3, led_y+3, led_z-3]) rotate([180,0,180])
+                text("IN", 2);
+            }
+        }
 }
 
 module pin()
 {
     // Lower pin for ESP32: only 5mm clearance
-    cylinder(h=5, d1=3.13, d2=2.08, $fn=fn, center=true);
+    cylinder(h=10, d1=3.13, d2=2.08, $fn=fn, center=true);
     translate([0,0,-2])cylinder(h=4, d=5, $fn=fn, center=true);
 }
