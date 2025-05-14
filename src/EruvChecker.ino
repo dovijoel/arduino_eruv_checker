@@ -23,8 +23,8 @@ uint32_t timer = millis();
 
 AsyncWebServer server(80);
 
-const char *ssid = "Joel Wifi";                       // WiFi AP SSID
-const char *password = "passwordisstillnotapassword"; // WiFi AP Password
+const char *ssid = "Flamingos also for sale here"; // WiFi AP SSID
+const char *password = "0723697875";               // WiFi AP Password
 
 std::vector<std::vector<Coordinate>> eruvs;
 std::vector<std::vector<Coordinate>> exclusions;
@@ -86,98 +86,84 @@ void parseEruvJson()
   Serial.println("Eruv polygons parsed successfully.");
 }
 
-
 // the values in the NMEA sentences are in the format DDMM.MMMM
 // where DD is degrees and MM.MMMM is minutes
 // this function converts that to decimal degrees
 // for example, 1234.5678 becomes 12.5763 degrees
 // 1234.5678 = 12 degrees + 34.5678 minutes
 // 12 degrees + (34.5678/60) = 12.5763 degrees
-float decimalDegrees(float nmeaCoord) {
-  uint16_t wholeDegrees = 0.01*nmeaCoord;
-  return wholeDegrees + (nmeaCoord - 100.0*wholeDegrees)/60.0;
+float decimalDegrees(float nmeaCoord)
+{
+  uint16_t wholeDegrees = 0.01 * nmeaCoord;
+  return wholeDegrees + (nmeaCoord - 100.0 * wholeDegrees) / 60.0;
 }
 
-bool nmeaCheck(String nmea) {
-  // Parse the NMEA string
-  bool isInEruv = false;
-          char nmeaCharArray[nmea.length() + 1];
-          nmea.toCharArray(nmeaCharArray, nmea.length() + 1);
-          if (GPS.parse(nmeaCharArray)) { // Parse the NMEA sentence
-            if (true) { // Check if GPS has a valid fix, keeping true for debugging
-              WebSerial.print("Location: ");
-              WebSerial.print(GPS.latitude, 4);
-              WebSerial.print(GPS.lat);
-              WebSerial.print(", ");
-              WebSerial.print(GPS.longitude, 4);
-              WebSerial.println(GPS.lon);
-              WebSerial.print("Speed (knots): ");
-              WebSerial.println(GPS.speed);
-              WebSerial.print("Angle: ");
-              WebSerial.println(GPS.angle);
-              WebSerial.print("Altitude: ");
-              WebSerial.println(GPS.altitude);
-              Coordinate currentLocation = {decimalDegrees(GPS.latitude), decimalDegrees(GPS.longitude)};
-              if (GPS.lat == 'S') {
-                currentLocation.latitude = -currentLocation.latitude;
-              }
-              if (GPS.lon == 'W') {
-                currentLocation.longitude = -currentLocation.longitude;
-              }
-              WebSerial.print("Current Location: ");
-              WebSerial.print(currentLocation.latitude);
-              WebSerial.print(", ");
-              WebSerial.println(currentLocation.longitude);
-              
-              // Check if the current location is inside the eruv
-              WebSerial.println("Number of eruvs: " + String(eruvs.size()));
-              WebSerial.println("Number of exclusions: " + String(exclusions.size()));
-              if (isPointInEruv(eruvs, exclusions, currentLocation, WebSerial)) {
-                isInEruv = true;
-                WebSerial.println("Inside the eruv.");
-              } else {
-                WebSerial.println("Outside the eruv.");
-              }
-            } else {
-              WebSerial.println("No GPS fix.");
-            }
-          } else {
-            WebSerial.println("Failed to parse NMEA string.");
-          }
-
-          // Clear the buffer for the next sentence
-          d = "";
-        }
-      } 
-
-void setupPrinters() {
-  Serial.begin(115200);
-  multiPrinter.addPrinter(&Serial);
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-
-  if (WiFi.waitForConnectResult() != WL_CONNECTED)
+bool nmeaCheck(String nmea)
+{
+  if (nmea.length() > 0)
   {
-    multiPrinter.printf("WiFi Failed!\n");
-    return;
+    // Parse the NMEA string
+    WebSerial.println(nmea);
+    bool isInEruv = false;
+    char nmeaCharArray[nmea.length() + 1];
+    nmea.toCharArray(nmeaCharArray, nmea.length() + 1);
+    if (GPS.parse(nmeaCharArray))
+    { // Parse the NMEA sentence
+      if (GPS.fix)
+      { // Check if GPS has a valid fix, keeping true for debugging
+        WebSerial.print("Location: ");
+        WebSerial.print(GPS.latitude, 4);
+        WebSerial.print(GPS.lat);
+        WebSerial.print(", ");
+        WebSerial.print(GPS.longitude, 4);
+        WebSerial.println(GPS.lon);
+        WebSerial.print("Speed (knots): ");
+        WebSerial.println(GPS.speed);
+        WebSerial.print("Angle: ");
+        WebSerial.println(GPS.angle);
+        WebSerial.print("Altitude: ");
+        WebSerial.println(GPS.altitude);
+        Coordinate currentLocation = {decimalDegrees(GPS.latitude), decimalDegrees(GPS.longitude)};
+        if (GPS.lat == 'S')
+        {
+          currentLocation.latitude = -currentLocation.latitude;
+        }
+        if (GPS.lon == 'W')
+        {
+          currentLocation.longitude = -currentLocation.longitude;
+        }
+        WebSerial.print("Current Location: ");
+        WebSerial.print(currentLocation.latitude);
+        WebSerial.print(", ");
+        WebSerial.println(currentLocation.longitude);
+
+        // Check if the current location is inside the eruv
+        WebSerial.println("Number of eruvs: " + String(eruvs.size()));
+        WebSerial.println("Number of exclusions: " + String(exclusions.size()));
+        if (isPointInEruv(eruvs, exclusions, currentLocation, WebSerial))
+        {
+          isInEruv = true;
+          WebSerial.println("Inside the eruv.");
+        }
+        else
+        {
+          WebSerial.println("Outside the eruv.");
+        }
+      }
+      else
+      {
+        // WebSerial.println("No GPS fix.");
+      }
+    }
+    else
+    {
+      // WebSerial.println("Failed to parse NMEA string.");
+    }
   }
-
-  multiPrinter.addPrinter(&Serial);
-  // Once connected, print IP
-  multiPrinter.print("IP Address: ");
-  multiPrinter.println(WiFi.localIP());
-
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
-            { request->send(200, "text/plain", "Hi! This is WebSerial demo. You can access webserial interface at http://" + WiFi.localIP().toString() + "/webserial"); });
-
-  // WebSerial is accessible at "<IP Address>/webserial" in browser
-  multiPrinter.begin(&server);
-
-  WebSerial.onMessage(nmeaReceived);
-
-  // Start server
-  server.begin();
+  else
+  {
+    WebSerial.println("Empty");
+  }
 }
 
 void setup()
@@ -197,6 +183,13 @@ void setup()
       multiPrinter.println("Card Mount Failed");
       return;
     }
+  Serial.println("Starting eruv checker.");
+  ;
+  if (!SPIFFS.begin())
+  {
+    Serial.println("Card Mount Failed");
+    return;
+  }
   parseEruvJson();
 
   // 9600 NMEA is the default baud rate for Adafruit MTK GPS's- some use 4800
@@ -219,89 +212,65 @@ void setup()
 
   // Ask for firmware version
   GPS.println(PMTK_Q_RELEASE);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  if (WiFi.waitForConnectResult() != WL_CONNECTED)
+  {
+    Serial.printf("WiFi Failed!\n");
+    // return;
+  }
+
+  // Once connected, print IP
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+            { request->send(200, "text/plain", "Hi! This is WebSerial demo. You can access webserial interface at http://" + WiFi.localIP().toString() + "/webserial"); });
+
+  // WebSerial is accessible at "<IP Address>/webserial" in browser
+  WebSerial.begin(&server);
+
+  WebSerial.onMessage(nmeaCheck);
+
+  // Start server
+  server.begin();
 }
 
-void loop() // run over and over again
+void loop()
 {
-  // // read data from the GPS in the 'main loop'
-  // char c = GPS.read();
-  // // if you want to debug, this is a good time to do it!
-  // if (GPSECHO)
-  //   if (c)
-  //     WebSerial.print(c);
-  // // if a sentence is received, we can check the checksum, parse it...
-  // if (GPS.newNMEAreceived())
-  // {
-  //   // a tricky thing here is if we print the NMEA sentence, or data
-  //   // we end up not listening and catching other sentences!
-  //   // so be very wary if using OUTPUT_ALLDATA and trying to print out data
-  //   WebSerial.println(GPS.lastNMEA()); // this also sets the newNMEAreceived() flag to false
-  //   if (!GPS.parse(GPS.lastNMEA()))    // this also sets the newNMEAreceived() flag to false
-  //     return;                          // we can fail to parse a sentence in which case we should just wait for another
-  // }
-
-  // // approximately every 2 seconds or so, print out the current stats
-  bool ledState = false;
-  if (millis() - timer > 2000)
+  // read data from the GPS in the 'main loop'
+  char c = GPS.read();
+  // if you want to debug, this is a good time to do it!
+  if (GPSECHO)
+    if (c)
+      WebSerial.print(c);
+  // if a sentence is received, we can check the checksum, parse it...
+  if (GPS.newNMEAreceived())
   {
-    timer = millis(); // reset the timer
-    ledState = !ledState;
-    digitalWrite(18, ledState);
+    // a tricky thing here is if we print the NMEA sentence, or data
+    // we end up not listening and catching other sentences!
+    // so be very wary if using OUTPUT_ALLDATA and trying to print out data
+    char *nmea = GPS.lastNMEA();
+    if (nmea != NULL)
+    {
+      WebSerial.println(nmea);
+    }
+    else
+    {
+      WebSerial.println("NMEA is NULL");
+    }
+
+    // if (!GPS.parse(nmea)) // this also sets the newNMEAreceived() flag to false
+    //   return;             // we can fail to parse a sentence in which case we should just wait for another
+
+    if (strstr(nmea, "GGA") != NULL)
+    {
+      isInEruv = nmeaCheck(nmea); // this also sets the newNMEAreceived() flag to false
+    }
   }
-  // WebSerial.print("\nTime: ");
-  // if (GPS.hour < 10)
-  // {
-  //   WebSerial.print('0');
-  // }
-  // WebSerial.print(GPS.hour, DEC);
-  // WebSerial.print(':');
-  // if (GPS.minute < 10)
-  // {
-  //   WebSerial.print('0');
-  // }
-  // WebSerial.print(GPS.minute, DEC);
-  // WebSerial.print(':');
-  // if (GPS.seconds < 10)
-  // {
-  //   WebSerial.print('0');
-  // }
-  // WebSerial.print(GPS.seconds, DEC);
-  // WebSerial.print('.');
-  // if (GPS.milliseconds < 10)
-  // {
-  //   WebSerial.print("00");
-  // }
-  // else if (GPS.milliseconds > 9 && GPS.milliseconds < 100)
-  // {
-  //   WebSerial.print("0");
-  // }
-  // WebSerial.println(GPS.milliseconds);
-  // WebSerial.print("Date: ");
-  // WebSerial.print(GPS.day, DEC);
-  // WebSerial.print('/');
-  // WebSerial.print(GPS.month, DEC);
-  // WebSerial.print("/20");
-  // WebSerial.println(GPS.year, DEC);
-  // WebSerial.print("Fix: ");
-  // WebSerial.print((int)GPS.fix);
-  // WebSerial.print(" quality: ");
-  // WebSerial.println((int)GPS.fixquality);
-  // if (GPS.fix)
-  // {
-  //   WebSerial.print("Location: ");
-  //   WebSerial.print(GPS.latitude, 4);
-  //   WebSerial.print(GPS.lat);
-  //   WebSerial.print(", ");
-  //   WebSerial.print(GPS.longitude, 4);
-  //   WebSerial.println(GPS.lon);
-  //   WebSerial.print("Speed (knots): ");
-  //   WebSerial.println(GPS.speed);
-  //   WebSerial.print("Angle: ");
-  //   WebSerial.println(GPS.angle);
-  //   WebSerial.print("Altitude: ");
-  //   WebSerial.println(GPS.altitude);
-  //   WebSerial.print("Satellites: ");
-  //   WebSerial.println((int)GPS.satellites);
-  // }
-  // }
+  digitalWrite(19, isInEruv);
+  digitalWrite(18, !isInEruv);
+  // sleep(2);
 }
