@@ -122,19 +122,25 @@ module lid()
         for (i = [-1,0,1]) {
             
             if (i == -1) {
-                translate([(i*led_spacing)+3, led_y+3, led_z]) rotate([180,0,180])
-                linear_extrude(3.5) {
+                translate([(i*led_spacing), led_y+4, led_z-2]) rotate([180,0,180])
+                linear_extrude(1.5) {
         offset(r=0.01)
-        text("GPS", size = 3, font = font, halign="center");
+        text("GPS", size = 3, halign="center");
     }
             }
             if (i == 0) {
-                translate([(i*led_spacing)+3, led_y+3, led_z-3]) rotate([180,0,180])
-                text("OUT", 2);
+                translate([(i*led_spacing), led_y+4, led_z-2]) rotate([180,0,180])
+                linear_extrude(1.5) {
+        offset(r=0.01)
+        text("OUT", size = 3, halign="center");
+    }
             }
             if (i == 1) {
-                translate([(i*led_spacing)+3, led_y+3, led_z-3]) rotate([180,0,180])
-                text("IN", 2);
+                translate([(i*led_spacing), led_y+4, led_z-2]) rotate([180,0,180])
+                linear_extrude(1.5) {
+        offset(r=0.01)
+        text("IN", size = 3, halign="center");
+    }
             }
         }
 }
