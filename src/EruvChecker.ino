@@ -1,5 +1,5 @@
-#include <Adafruit_GPS.h>
 #include <Arduino.h>
+#include <Adafruit_GPS.h>
 #include <WiFi.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
@@ -17,7 +17,9 @@ Adafruit_GPS GPS(&Wire);
 
 // Set GPSECHO to 'false' to turn off echoing the GPS data to the Serial console
 // Set to 'true' if you want to debug and listen to the raw GPS sentences
-#define GPSECHO true
+#define GPSECHO false
+#define IN_ERUV_LED 18
+#define OUT_ERUV_LED 19
 
 uint32_t timer = millis();
 
@@ -30,6 +32,7 @@ std::vector<std::vector<Coordinate>> eruvs;
 std::vector<std::vector<Coordinate>> exclusions;
 
 bool isInEruv = false;
+bool debugMode = false;
 
 // Function to convert a JSON array to a vector of Coordinates
 std::vector<Coordinate> rawJsonArrayToPolygon(JsonArray jsonArray)
@@ -56,7 +59,7 @@ void parseEruvJson()
   }
 
   // Allocate a buffer to store the JSON file
-  StaticJsonDocument<16384> doc; // Adjust size based on JSON complexity
+  JsonDocument doc; // Adjust size based on JSON complexity
   DeserializationError error = deserializeJson(doc, file);
   if (error)
   {
@@ -98,91 +101,145 @@ float decimalDegrees(float nmeaCoord)
   return wholeDegrees + (nmeaCoord - 100.0 * wholeDegrees) / 60.0;
 }
 
-bool nmeaCheck(String nmea)
+void nmeaCheck(String nmea)
 {
-  if (nmea.length() > 0)
-  {
-    // Parse the NMEA string
-    multiPrinter.println(nmea);
-    bool isInEruv = false;
-    char nmeaCharArray[nmea.length() + 1];
-    nmea.toCharArray(nmeaCharArray, nmea.length() + 1);
-    if (GPS.parse(nmeaCharArray))
-    { // Parse the NMEA sentence
-      if (GPS.fix)
-      { // Check if GPS has a valid fix, keeping true for debugging
-        multiPrinter.print("Location: ");
-        multiPrinter.print(GPS.latitude, 4);
-        multiPrinter.print(GPS.lat);
-        multiPrinter.print(", ");
-        multiPrinter.print(GPS.longitude, 4);
-        multiPrinter.println(GPS.lon);
-        multiPrinter.print("Speed (knots): ");
-        multiPrinter.println(GPS.speed);
-        multiPrinter.print("Angle: ");
-        multiPrinter.println(GPS.angle);
-        multiPrinter.print("Altitude: ");
-        multiPrinter.println(GPS.altitude);
-        Coordinate currentLocation = {decimalDegrees(GPS.latitude), decimalDegrees(GPS.longitude)};
-        if (GPS.lat == 'S')
-        {
-          currentLocation.latitude = -currentLocation.latitude;
-        }
-        if (GPS.lon == 'W')
-        {
-          currentLocation.longitude = -currentLocation.longitude;
-        }
-        multiPrinter.print("Current Location: ");
-        multiPrinter.print(currentLocation.latitude);
-        multiPrinter.print(", ");
-        multiPrinter.println(currentLocation.longitude);
-
-        // Check if the current location is inside the eruv
-        multiPrinter.println("Number of eruvs: " + String(eruvs.size()));
-        multiPrinter.println("Number of exclusions: " + String(exclusions.size()));
-        if (isPointInEruv(eruvs, exclusions, currentLocation, WebSerial))
-        {
-          isInEruv = true;
-          multiPrinter.println("Inside the eruv.");
-        }
-        else
-        {
-          multiPrinter.println("Outside the eruv.");
-        }
-      }
-      else
-      {
-        // multiPrinter.println("No GPS fix.");
-      }
+  if (nmea == "debug") {
+    debugMode = !debugMode;
+    if (debugMode)
+    {
+      multiPrinter.println("Debug mode enabled.");
     }
     else
     {
-      // multiPrinter.println("Failed to parse NMEA string.");
+      multiPrinter.println("Debug mode disabled.");
+    }
+    return;
+  }
+  else
+  {
+    multiPrinter.println("Received NMEA sentence: " + nmea);
+  }
+  // Check if the NMEA sentence is valid
+  if (GPS.check((char *)nmea.c_str()))
+  {
+    multiPrinter.println("Valid NMEA sentence received.");
+    // Parse the NMEA sentence
+    GPS.parse((char *)nmea.c_str());
+    // Update the eruv status
+    updateEruvStatus();
+  }
+  else
+  {
+    multiPrinter.println("Invalid NMEA sentence.");
+  }
+}
+
+void updateEruvStatus()
+{
+  if (GPS.fix)
+  { // Check if GPS has a valid fix, keeping true for debugging
+    multiPrinter.print("Location: ");
+    multiPrinter.print(GPS.latitude, 4);
+    multiPrinter.print(GPS.lat);
+    multiPrinter.print(", ");
+    multiPrinter.print(GPS.longitude, 4);
+    multiPrinter.println(GPS.lon);
+    multiPrinter.print("Speed (knots): ");
+    multiPrinter.println(GPS.speed);
+    multiPrinter.print("Angle: ");
+    multiPrinter.println(GPS.angle);
+    multiPrinter.print("Altitude: ");
+    multiPrinter.println(GPS.altitude);
+    Coordinate currentLocation = {decimalDegrees(GPS.latitude), decimalDegrees(GPS.longitude)};
+    if (GPS.lat == 'S')
+    {
+      currentLocation.latitude = -currentLocation.latitude;
+    }
+    if (GPS.lon == 'W')
+    {
+      currentLocation.longitude = -currentLocation.longitude;
+    }
+    multiPrinter.print("Current Location: ");
+    multiPrinter.print(currentLocation.latitude);
+    multiPrinter.print(", ");
+    multiPrinter.println(currentLocation.longitude);
+
+    // Check if the current location is inside the eruv
+    multiPrinter.println("Number of eruvs: " + String(eruvs.size()));
+    multiPrinter.println("Number of exclusions: " + String(exclusions.size()));
+    if (isPointInEruv(eruvs, exclusions, currentLocation, WebSerial))
+    {
+      isInEruv = true;
+      multiPrinter.println("Inside the eruv.");
+    }
+    else
+    {
+      isInEruv = false;
+      multiPrinter.println("Outside the eruv.");
     }
   }
   else
   {
-    multiPrinter.println("Empty");
+    isInEruv = false;
+    multiPrinter.println("No GPS fix.");
+  }
+
+  
+}
+
+void setupPrinters()
+{
+  // Normal serial
+  Serial.begin(115200);
+  Serial.onReceive([]() {
+    String nmea = Serial.readStringUntil('\n');
+    nmeaCheck(nmea);
+  });
+  multiPrinter.addPrinter(&Serial);
+
+  // Wifi serial
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  if (WiFi.waitForConnectResult() != WL_CONNECTED)
+  {
+    multiPrinter.printf("WiFi Failed!\n");
+    // return;
+  }
+  else
+  {
+    // Once connected, print IP
+    multiPrinter.print("IP Address: ");
+    multiPrinter.println(WiFi.localIP());
+
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+              { request->send(200, "text/plain", "Hi! This is WebSerial demo. You can access webserial interface at http://" + WiFi.localIP().toString() + "/webserial"); });
+
+    // WebSerial is accessible at "<IP Address>/webserial" in browser
+    WebSerial.begin(&server);
+
+    WebSerial.onMessage(nmeaCheck);
+
+    // Start server
+    server.begin();
   }
 }
 
 void setup()
 {
-  // while (!Serial);  // uncomment to have the sketch wait until Serial is ready
+  setupPrinters();
 
-  // connect at 115200 so we can read the GPS fast enough and echo without dropping chars
-  // also spit it out
-  
-  pinMode(18, OUTPUT);
-  pinMode(19, OUTPUT);
+  pinMode(IN_ERUV_LED, OUTPUT);
+  pinMode(OUT_ERUV_LED, OUTPUT);
+  digitalWrite(IN_ERUV_LED, LOW);
+  digitalWrite(OUT_ERUV_LED, HIGH);
   multiPrinter.println("Starting eruv checker.");
 
-  // set up led pins
-  pinMode(18, OUTPUT);
-  if (!SPIFFS.begin()) {
-      multiPrinter.println("Card Mount Failed");
-      return;
-    }
+  if (!SPIFFS.begin())
+  {
+    multiPrinter.println("Card Mount Failed");
+    return;
+  }
   multiPrinter.println("Starting eruv checker.");
   ;
   if (!SPIFFS.begin())
@@ -212,35 +269,12 @@ void setup()
 
   // Ask for firmware version
   GPS.println(PMTK_Q_RELEASE);
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-
-  if (WiFi.waitForConnectResult() != WL_CONNECTED)
-  {
-    multiPrinter.printf("WiFi Failed!\n");
-    // return;
-  }
-
-  // Once connected, print IP
-  multiPrinter.print("IP Address: ");
-  multiPrinter.println(WiFi.localIP());
-
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
-            { request->send(200, "text/plain", "Hi! This is WebSerial demo. You can access webserial interface at http://" + WiFi.localIP().toString() + "/webserial"); });
-
-  // WebSerial is accessible at "<IP Address>/webserial" in browser
-  multiPrinter.begin(&server);
-
-  WebSerial.onMessage(nmeaCheck);
-
-  // Start server
-  server.begin();
 }
 
 void loop()
 {
-  // read data from the GPS in the 'main loop'
+  if (!debugMode) {
+    
   char c = GPS.read();
   // if you want to debug, this is a good time to do it!
   if (GPSECHO)
@@ -252,25 +286,62 @@ void loop()
     // a tricky thing here is if we print the NMEA sentence, or data
     // we end up not listening and catching other sentences!
     // so be very wary if using OUTPUT_ALLDATA and trying to print out data
-    char *nmea = GPS.lastNMEA();
-    if (nmea != NULL)
-    {
-      multiPrinter.println(nmea);
+    if (strstr(GPS.lastNMEA(), "GGA") != NULL)
+    { // this also sets the newNMEAreceived() flag to false
+      multiPrinter.println(GPS.lastNMEA());
     }
-    else
-    {
-      multiPrinter.println("NMEA is NULL");
-    }
-
-    // if (!GPS.parse(nmea)) // this also sets the newNMEAreceived() flag to false
-    //   return;             // we can fail to parse a sentence in which case we should just wait for another
-
-    if (strstr(nmea, "GGA") != NULL)
-    {
-      isInEruv = nmeaCheck(nmea); // this also sets the newNMEAreceived() flag to false
-    }
+    if (!GPS.parse(GPS.lastNMEA())) // this also sets the newNMEAreceived() flag to false
+      return;                       // we can fail to parse a sentence in which case we should just wait for another
   }
-  digitalWrite(19, isInEruv);
-  digitalWrite(18, !isInEruv);
-  // sleep(2);
+}
+
+  // approximately every 2 seconds or so, print out the current stats
+  if (millis() - timer > 2000)
+  {
+    timer = millis(); // reset the timer
+    if (GPS.fix)
+    {
+      multiPrinter.print("\nTime: ");
+      if (GPS.hour < 10)
+      {
+        multiPrinter.print('0');
+      }
+      multiPrinter.print(GPS.hour, DEC);
+      multiPrinter.print(':');
+      if (GPS.minute < 10)
+      {
+        multiPrinter.print('0');
+      }
+      multiPrinter.print(GPS.minute, DEC);
+      multiPrinter.print(':');
+      if (GPS.seconds < 10)
+      {
+        multiPrinter.print('0');
+      }
+      multiPrinter.print(GPS.seconds, DEC);
+      multiPrinter.print('.');
+      if (GPS.milliseconds < 10)
+      {
+        multiPrinter.print("00");
+      }
+      else if (GPS.milliseconds > 9 && GPS.milliseconds < 100)
+      {
+        multiPrinter.print("0");
+      }
+      multiPrinter.println(GPS.milliseconds);
+      multiPrinter.print("Date: ");
+      multiPrinter.print(GPS.day, DEC);
+      multiPrinter.print('/');
+      multiPrinter.print(GPS.month, DEC);
+      multiPrinter.print("/20");
+      multiPrinter.println(GPS.year, DEC);
+      multiPrinter.print("Fix: ");
+      multiPrinter.print((int)GPS.fix);
+      multiPrinter.print(" quality: ");
+      multiPrinter.println((int)GPS.fixquality);
+    }
+    updateEruvStatus();
+    digitalWrite(IN_ERUV_LED, isInEruv ? HIGH : LOW);  // Set the LED pin based on eruv status
+    digitalWrite(OUT_ERUV_LED, isInEruv ? LOW : HIGH); // Set the LED pin based on eruv status
+  }
 }

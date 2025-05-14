@@ -9,6 +9,7 @@ private:
     std::vector<Print *> printers;
 
 public:
+    virtual ~MultiPrint() {}
     // Add a Print object to the list
     void addPrinter(Print *printer);
 
