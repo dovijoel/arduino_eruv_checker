@@ -17,7 +17,7 @@ Adafruit_GPS GPS(&Wire);
 
 // Set GPSECHO to 'false' to turn off echoing the GPS data to the Serial console
 // Set to 'true' if you want to debug and listen to the raw GPS sentences
-#define GPSECHO false
+#define GPSECHO true
 
 uint32_t timer = millis();
 
@@ -51,7 +51,7 @@ void parseEruvJson()
   File file = SPIFFS.open("/eruv.json", "r");
   if (!file)
   {
-    Serial.println("Failed to open file for reading");
+    multiPrinter.println("Failed to open file for reading");
     return;
   }
 
@@ -60,8 +60,8 @@ void parseEruvJson()
   DeserializationError error = deserializeJson(doc, file);
   if (error)
   {
-    Serial.print("Failed to parse JSON: ");
-    Serial.println(error.c_str());
+    multiPrinter.print("Failed to parse JSON: ");
+    multiPrinter.println(error.c_str());
     file.close();
     return;
   }
@@ -83,7 +83,7 @@ void parseEruvJson()
     exclusions.push_back(rawJsonArrayToPolygon(polygon));
   }
 
-  Serial.println("Eruv polygons parsed successfully.");
+  multiPrinter.println("Eruv polygons parsed successfully.");
 }
 
 // the values in the NMEA sentences are in the format DDMM.MMMM
@@ -103,7 +103,7 @@ bool nmeaCheck(String nmea)
   if (nmea.length() > 0)
   {
     // Parse the NMEA string
-    WebSerial.println(nmea);
+    multiPrinter.println(nmea);
     bool isInEruv = false;
     char nmeaCharArray[nmea.length() + 1];
     nmea.toCharArray(nmeaCharArray, nmea.length() + 1);
@@ -111,18 +111,18 @@ bool nmeaCheck(String nmea)
     { // Parse the NMEA sentence
       if (GPS.fix)
       { // Check if GPS has a valid fix, keeping true for debugging
-        WebSerial.print("Location: ");
-        WebSerial.print(GPS.latitude, 4);
-        WebSerial.print(GPS.lat);
-        WebSerial.print(", ");
-        WebSerial.print(GPS.longitude, 4);
-        WebSerial.println(GPS.lon);
-        WebSerial.print("Speed (knots): ");
-        WebSerial.println(GPS.speed);
-        WebSerial.print("Angle: ");
-        WebSerial.println(GPS.angle);
-        WebSerial.print("Altitude: ");
-        WebSerial.println(GPS.altitude);
+        multiPrinter.print("Location: ");
+        multiPrinter.print(GPS.latitude, 4);
+        multiPrinter.print(GPS.lat);
+        multiPrinter.print(", ");
+        multiPrinter.print(GPS.longitude, 4);
+        multiPrinter.println(GPS.lon);
+        multiPrinter.print("Speed (knots): ");
+        multiPrinter.println(GPS.speed);
+        multiPrinter.print("Angle: ");
+        multiPrinter.println(GPS.angle);
+        multiPrinter.print("Altitude: ");
+        multiPrinter.println(GPS.altitude);
         Coordinate currentLocation = {decimalDegrees(GPS.latitude), decimalDegrees(GPS.longitude)};
         if (GPS.lat == 'S')
         {
@@ -132,37 +132,37 @@ bool nmeaCheck(String nmea)
         {
           currentLocation.longitude = -currentLocation.longitude;
         }
-        WebSerial.print("Current Location: ");
-        WebSerial.print(currentLocation.latitude);
-        WebSerial.print(", ");
-        WebSerial.println(currentLocation.longitude);
+        multiPrinter.print("Current Location: ");
+        multiPrinter.print(currentLocation.latitude);
+        multiPrinter.print(", ");
+        multiPrinter.println(currentLocation.longitude);
 
         // Check if the current location is inside the eruv
-        WebSerial.println("Number of eruvs: " + String(eruvs.size()));
-        WebSerial.println("Number of exclusions: " + String(exclusions.size()));
+        multiPrinter.println("Number of eruvs: " + String(eruvs.size()));
+        multiPrinter.println("Number of exclusions: " + String(exclusions.size()));
         if (isPointInEruv(eruvs, exclusions, currentLocation, WebSerial))
         {
           isInEruv = true;
-          WebSerial.println("Inside the eruv.");
+          multiPrinter.println("Inside the eruv.");
         }
         else
         {
-          WebSerial.println("Outside the eruv.");
+          multiPrinter.println("Outside the eruv.");
         }
       }
       else
       {
-        // WebSerial.println("No GPS fix.");
+        // multiPrinter.println("No GPS fix.");
       }
     }
     else
     {
-      // WebSerial.println("Failed to parse NMEA string.");
+      // multiPrinter.println("Failed to parse NMEA string.");
     }
   }
   else
   {
-    WebSerial.println("Empty");
+    multiPrinter.println("Empty");
   }
 }
 
@@ -183,11 +183,11 @@ void setup()
       multiPrinter.println("Card Mount Failed");
       return;
     }
-  Serial.println("Starting eruv checker.");
+  multiPrinter.println("Starting eruv checker.");
   ;
   if (!SPIFFS.begin())
   {
-    Serial.println("Card Mount Failed");
+    multiPrinter.println("Card Mount Failed");
     return;
   }
   parseEruvJson();
@@ -218,19 +218,19 @@ void setup()
 
   if (WiFi.waitForConnectResult() != WL_CONNECTED)
   {
-    Serial.printf("WiFi Failed!\n");
+    multiPrinter.printf("WiFi Failed!\n");
     // return;
   }
 
   // Once connected, print IP
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP());
+  multiPrinter.print("IP Address: ");
+  multiPrinter.println(WiFi.localIP());
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
             { request->send(200, "text/plain", "Hi! This is WebSerial demo. You can access webserial interface at http://" + WiFi.localIP().toString() + "/webserial"); });
 
   // WebSerial is accessible at "<IP Address>/webserial" in browser
-  WebSerial.begin(&server);
+  multiPrinter.begin(&server);
 
   WebSerial.onMessage(nmeaCheck);
 
@@ -245,7 +245,7 @@ void loop()
   // if you want to debug, this is a good time to do it!
   if (GPSECHO)
     if (c)
-      WebSerial.print(c);
+      multiPrinter.print(c);
   // if a sentence is received, we can check the checksum, parse it...
   if (GPS.newNMEAreceived())
   {
@@ -255,11 +255,11 @@ void loop()
     char *nmea = GPS.lastNMEA();
     if (nmea != NULL)
     {
-      WebSerial.println(nmea);
+      multiPrinter.println(nmea);
     }
     else
     {
-      WebSerial.println("NMEA is NULL");
+      multiPrinter.println("NMEA is NULL");
     }
 
     // if (!GPS.parse(nmea)) // this also sets the newNMEAreceived() flag to false
