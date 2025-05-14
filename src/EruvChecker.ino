@@ -8,6 +8,9 @@
 #include <ArduinoJson.h>
 #include <Eruv.h>
 #include <vector>
+#include <MultiPrint.h>
+
+MultiPrint multiPrinter;
 
 // Connect to the GPS on the hardware I2C port
 Adafruit_GPS GPS(&Wire);
@@ -147,21 +150,51 @@ bool nmeaCheck(String nmea) {
         }
       } 
 
+void setupPrinters() {
+  Serial.begin(115200);
+  multiPrinter.addPrinter(&Serial);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  if (WiFi.waitForConnectResult() != WL_CONNECTED)
+  {
+    multiPrinter.printf("WiFi Failed!\n");
+    return;
+  }
+
+  multiPrinter.addPrinter(&Serial);
+  // Once connected, print IP
+  multiPrinter.print("IP Address: ");
+  multiPrinter.println(WiFi.localIP());
+
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+            { request->send(200, "text/plain", "Hi! This is WebSerial demo. You can access webserial interface at http://" + WiFi.localIP().toString() + "/webserial"); });
+
+  // WebSerial is accessible at "<IP Address>/webserial" in browser
+  multiPrinter.begin(&server);
+
+  WebSerial.onMessage(nmeaReceived);
+
+  // Start server
+  server.begin();
+}
+
 void setup()
 {
   // while (!Serial);  // uncomment to have the sketch wait until Serial is ready
 
   // connect at 115200 so we can read the GPS fast enough and echo without dropping chars
   // also spit it out
-  Serial.begin(115200);
+  
   pinMode(18, OUTPUT);
   pinMode(19, OUTPUT);
-  Serial.println("Starting eruv checker.");
+  multiPrinter.println("Starting eruv checker.");
 
   // set up led pins
   pinMode(18, OUTPUT);
   if (!SPIFFS.begin()) {
-      Serial.println("Card Mount Failed");
+      multiPrinter.println("Card Mount Failed");
       return;
     }
   parseEruvJson();
@@ -186,30 +219,6 @@ void setup()
 
   // Ask for firmware version
   GPS.println(PMTK_Q_RELEASE);
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-
-  if (WiFi.waitForConnectResult() != WL_CONNECTED)
-  {
-    Serial.printf("WiFi Failed!\n");
-    return;
-  }
-
-  // Once connected, print IP
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP());
-
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
-            { request->send(200, "text/plain", "Hi! This is WebSerial demo. You can access webserial interface at http://" + WiFi.localIP().toString() + "/webserial"); });
-
-  // WebSerial is accessible at "<IP Address>/webserial" in browser
-  WebSerial.begin(&server);
-
-  WebSerial.onMessage(nmeaReceived);
-
-  // Start server
-  server.begin();
 }
 
 void loop() // run over and over again
