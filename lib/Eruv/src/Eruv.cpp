@@ -9,6 +9,11 @@ struct Coordinate {
 bool isPointInPolygon(const std::vector<Coordinate>& polygon, const Coordinate& point, Print& logger) {
     int n = polygon.size();
     if (n < 3) return false; // A polygon must have at least 3 vertices
+bool isPointInPolygon(const std::vector<Coordinate>& polygonVertices, const Coordinate& testPoint) {
+    size_t vertexCount = polygonVertices.size();
+    if (vertexCount < 3) {
+        return false; // A valid polygon must have at least 3 vertices
+    }
 
     bool inside = false;
     for (int i = 0, j = n - 1; i < n; j = i++) {
@@ -20,9 +25,27 @@ bool isPointInPolygon(const std::vector<Coordinate>& polygon, const Coordinate& 
             (point.longitude < (vj.longitude - vi.longitude) * (point.latitude - vi.latitude) / (vj.latitude - vi.latitude) + vi.longitude)) {
             inside = !inside;
         }
+    bool isInside = false;
+
+    // Loop through each edge of the polygon
+    for (size_t current = 0, previous = vertexCount - 1; current < vertexCount; previous = current++) {
+        const Coordinate& currentVertex = polygonVertices[current];
+        const Coordinate& previousVertex = polygonVertices[previous];
+
+        bool crossesLatitude = (currentVertex.latitude > testPoint.latitude) != (previousVertex.latitude > testPoint.latitude);
+        if (crossesLatitude) {
+            double intersectionLongitude = (previousVertex.longitude - currentVertex.longitude) *
+                                           (testPoint.latitude - currentVertex.latitude) /
+                                           (previousVertex.latitude - currentVertex.latitude) +
+                                           currentVertex.longitude;
+
+            if (testPoint.longitude < intersectionLongitude) {
+                isInside = !isInside;
+            }
+        }
     }
 
-    return inside;
+    return isInside;
 }
 
 bool isPointInEruv(const std::vector<std::vector<Coordinate>>& eruvs, const std::vector<std::vector<Coordinate>>& exclusions, const Coordinate& point, Print& logger) {

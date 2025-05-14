@@ -26,6 +26,8 @@ const char *password = "passwordisstillnotapassword"; // WiFi AP Password
 std::vector<std::vector<Coordinate>> eruvs;
 std::vector<std::vector<Coordinate>> exclusions;
 
+bool isInEruv = false;
+
 // Function to convert a JSON array to a vector of Coordinates
 std::vector<Coordinate> rawJsonArrayToPolygon(JsonArray jsonArray)
 {
@@ -139,20 +141,9 @@ bool nmeaCheck(String nmea) {
           } else {
             WebSerial.println("Failed to parse NMEA string.");
           }
-        return isInEruv;
-}
 
-void nmeaReceived(uint8_t *data, size_t len)
-{
-  WebSerial.println("Received Data...");
-   String d = "";
-  for(int i=0; i < len; i++){
-    d += char(data[i]);
-  }
-  if (d.length() > 0) {
-          WebSerial.println("Received NMEA string: " + d);
-        nmeaCheck(d);
-          
+          // Clear the buffer for the next sentence
+          d = "";
         }
       } 
 
@@ -163,7 +154,12 @@ void setup()
   // connect at 115200 so we can read the GPS fast enough and echo without dropping chars
   // also spit it out
   Serial.begin(115200);
+  pinMode(18, OUTPUT);
+  pinMode(19, OUTPUT);
   Serial.println("Starting eruv checker.");
+
+  // set up led pins
+  pinMode(18, OUTPUT);
   if (!SPIFFS.begin()) {
       Serial.println("Card Mount Failed");
       return;
@@ -218,21 +214,85 @@ void setup()
 
 void loop() // run over and over again
 {
-  // read data from the GPS in the 'main loop'
-  char c = GPS.read();
-  // if you want to debug, this is a good time to do it!
-  if (GPSECHO)
-    if (c)
-      WebSerial.print(c);
-  // if a sentence is received, we can check the checksum, parse it...
-  if (GPS.newNMEAreceived())
+  // // read data from the GPS in the 'main loop'
+  // char c = GPS.read();
+  // // if you want to debug, this is a good time to do it!
+  // if (GPSECHO)
+  //   if (c)
+  //     WebSerial.print(c);
+  // // if a sentence is received, we can check the checksum, parse it...
+  // if (GPS.newNMEAreceived())
+  // {
+  //   // a tricky thing here is if we print the NMEA sentence, or data
+  //   // we end up not listening and catching other sentences!
+  //   // so be very wary if using OUTPUT_ALLDATA and trying to print out data
+  //   WebSerial.println(GPS.lastNMEA()); // this also sets the newNMEAreceived() flag to false
+  //   if (!GPS.parse(GPS.lastNMEA()))    // this also sets the newNMEAreceived() flag to false
+  //     return;                          // we can fail to parse a sentence in which case we should just wait for another
+  // }
+
+  // // approximately every 2 seconds or so, print out the current stats
+  bool ledState = false;
+  if (millis() - timer > 2000)
   {
-    // a tricky thing here is if we print the NMEA sentence, or data
-    // we end up not listening and catching other sentences!
-    // so be very wary if using OUTPUT_ALLDATA and trying to print out data
-    WebSerial.println(GPS.lastNMEA());
-    nmeaCheck(GPS.lastNMEA()); // this also sets the newNMEAreceived() flag to false
-    if (!GPS.parse(GPS.lastNMEA()))    // this also sets the newNMEAreceived() flag to false
-      return;                          // we can fail to parse a sentence in which case we should just wait for another
+    timer = millis(); // reset the timer
+    ledState = !ledState;
+    digitalWrite(18, ledState);
   }
+  // WebSerial.print("\nTime: ");
+  // if (GPS.hour < 10)
+  // {
+  //   WebSerial.print('0');
+  // }
+  // WebSerial.print(GPS.hour, DEC);
+  // WebSerial.print(':');
+  // if (GPS.minute < 10)
+  // {
+  //   WebSerial.print('0');
+  // }
+  // WebSerial.print(GPS.minute, DEC);
+  // WebSerial.print(':');
+  // if (GPS.seconds < 10)
+  // {
+  //   WebSerial.print('0');
+  // }
+  // WebSerial.print(GPS.seconds, DEC);
+  // WebSerial.print('.');
+  // if (GPS.milliseconds < 10)
+  // {
+  //   WebSerial.print("00");
+  // }
+  // else if (GPS.milliseconds > 9 && GPS.milliseconds < 100)
+  // {
+  //   WebSerial.print("0");
+  // }
+  // WebSerial.println(GPS.milliseconds);
+  // WebSerial.print("Date: ");
+  // WebSerial.print(GPS.day, DEC);
+  // WebSerial.print('/');
+  // WebSerial.print(GPS.month, DEC);
+  // WebSerial.print("/20");
+  // WebSerial.println(GPS.year, DEC);
+  // WebSerial.print("Fix: ");
+  // WebSerial.print((int)GPS.fix);
+  // WebSerial.print(" quality: ");
+  // WebSerial.println((int)GPS.fixquality);
+  // if (GPS.fix)
+  // {
+  //   WebSerial.print("Location: ");
+  //   WebSerial.print(GPS.latitude, 4);
+  //   WebSerial.print(GPS.lat);
+  //   WebSerial.print(", ");
+  //   WebSerial.print(GPS.longitude, 4);
+  //   WebSerial.println(GPS.lon);
+  //   WebSerial.print("Speed (knots): ");
+  //   WebSerial.println(GPS.speed);
+  //   WebSerial.print("Angle: ");
+  //   WebSerial.println(GPS.angle);
+  //   WebSerial.print("Altitude: ");
+  //   WebSerial.println(GPS.altitude);
+  //   WebSerial.print("Satellites: ");
+  //   WebSerial.println((int)GPS.satellites);
+  // }
+  // }
 }
