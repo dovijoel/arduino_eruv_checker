@@ -1,11 +1,34 @@
 #include "Arduino.h"
 #include <vector>
+#include <cmath>
+#include "Eruv.h"
 
-struct Coordinate
-{
-    double latitude;
-    double longitude;
-};
+double haversine(double lat1, double lon1, double lat2, double lon2) {
+    // Returns distance in meters between two lat/lon points
+    const double R = 6371000.0; // Earth radius in meters
+    double dLat = (lat2 - lat1) * M_PI / 180.0;
+    double dLon = (lon2 - lon1) * M_PI / 180.0;
+    double a = sin(dLat/2) * sin(dLat/2) +
+               cos(lat1 * M_PI / 180.0) * cos(lat2 * M_PI / 180.0) *
+               sin(dLon/2) * sin(dLon/2);
+    double c = 2 * atan2(sqrt(a), sqrt(1-a));
+    return R * c;
+}
+
+double pointToSegmentDistance(const Coordinate& p, const Coordinate& v, const Coordinate& w) {
+    // Returns the minimum distance from point p to the segment vw (in meters)
+    double lat1 = v.latitude, lon1 = v.longitude;
+    double lat2 = w.latitude, lon2 = w.longitude;
+    double lat0 = p.latitude, lon0 = p.longitude;
+    // Convert to radians for calculations
+    double dLat = lat2 - lat1;
+    double dLon = lon2 - lon1;
+    double t = ((lat0 - lat1) * dLat + (lon0 - lon1) * dLon) / (dLat * dLat + dLon * dLon);
+    t = fmax(0, fmin(1, t));
+    double projLat = lat1 + t * dLat;
+    double projLon = lon1 + t * dLon;
+    return haversine(lat0, lon0, projLat, projLon);
+}
 
 bool isPointInPolygon(const std::vector<Coordinate> &polygonVertices, const Coordinate &testPoint, Print &logger)
 {
@@ -41,33 +64,40 @@ bool isPointInPolygon(const std::vector<Coordinate> &polygonVertices, const Coor
     return isInside;
 }
 
-bool isPointInEruv(const std::vector<std::vector<Coordinate>> &eruvs, const std::vector<std::vector<Coordinate>> &exclusions, const Coordinate &point, Print &logger)
+EruvStatus isPointInEruv(const std::vector<std::vector<Coordinate>> &eruvs, const std::vector<std::vector<Coordinate>> &exclusions, const Coordinate &point, Print &logger)
 {
-    // first checking if in exclusion areas for ealy exit
+    EruvStatus status = {false, -1};
+    // Check exclusion areas first
     for (int i = 0; i < exclusions.size(); i++)
     {
         const std::vector<Coordinate> &exclusion = exclusions[i];
         if (isPointInPolygon(exclusion, point, logger))
         {
             logger.println("Point is in exclusion area, returning false...\n");
-            return false; // Point is inside an exclusion area
+            status.inEruv = false;
+            return status;
         }
     }
-
     logger.println("Nothing in exclusion areas, checking eruvs...\n");
-    // then checking if in eruv areas
+    // Check eruv polygons
     for (int i = 0; i < eruvs.size(); i++)
     {
         const std::vector<Coordinate> &eruv = eruvs[i];
         bool insideEruv = isPointInPolygon(eruv, point, logger);
-
         if (insideEruv)
         {
-            logger.println("Point is inside the Eruv, returning true...\n");
-            return true; // Point is inside the Eruv and not in any exclusion area
+            logger.println("Point is inside the Eruv, calculating distance to edge...\n");
+            // Calculate minimum distance to any edge of this eruv
+            double minDist = -1;
+            for (size_t j = 0, k = eruv.size() - 1; j < eruv.size(); k = j++) {
+                double dist = pointToSegmentDistance(point, eruv[k], eruv[j]);
+                if (minDist < 0 || dist < minDist) minDist = dist;
+            }
+            status.inEruv = true;
+            status.distanceToEdge = minDist;
+            return status;
         }
     }
-
     logger.println("Point is not inside any Eruv, returning false...\n");
-    return false; // Point is not inside any Eruv
+    return status;
 }

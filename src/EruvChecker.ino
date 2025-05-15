@@ -21,8 +21,11 @@ Adafruit_GPS GPS(&Wire);
 // Set GPSECHO to 'false' to turn off echoing the GPS data to the Serial console
 // Set to 'true' if you want to debug and listen to the raw GPS sentences
 #define GPSECHO false
+#define GPS_FIX_LED 15
 #define IN_ERUV_LED 18
 #define OUT_ERUV_LED 19
+#define BLINK_RATE 1000
+#define CLOSEST_DISTANCE 50 // meters
 
 uint32_t timer = millis();
 
@@ -34,11 +37,11 @@ const char *password = "0723697875";               // WiFi AP Password
 std::vector<std::vector<Coordinate>> eruvs;
 std::vector<std::vector<Coordinate>> exclusions;
 
-bool isInEruv = false;
+volatile EruvStatus eruvStatus = {false, -1};
 bool debugMode = false;
 
 SemaphoreHandle_t eruvMutex;
-volatile bool ledInEruv = false;
+volatile bool gpsFix = false;
 
 // Function to convert a JSON array to a vector of Coordinates
 std::vector<Coordinate> rawJsonArrayToPolygon(JsonArray jsonArray)
@@ -109,7 +112,8 @@ float decimalDegrees(float nmeaCoord)
 
 void nmeaCheck(String nmea)
 {
-  if (nmea == "debug") {
+  if (nmea == "debug")
+  {
     debugMode = !debugMode;
     if (debugMode)
     {
@@ -173,20 +177,34 @@ void updateEruvStatus()
     // Check if the current location is inside the eruv
     multiPrinter.println("Number of eruvs: " + String(eruvs.size()));
     multiPrinter.println("Number of exclusions: " + String(exclusions.size()));
-    if (isPointInEruv(eruvs, exclusions, currentLocation, WebSerial))
+    EruvStatus localEruvStatus = isPointInEruv(eruvs, exclusions, currentLocation, WebSerial);
+
+    // Update shared state
+    xSemaphoreTake(eruvMutex, portMAX_DELAY);
+    gpsFix = GPS.fix;
+    eruvStatus.inEruv = localEruvStatus.inEruv;
+    eruvStatus.distanceToEdge = localEruvStatus.distanceToEdge;
+    xSemaphoreGive(eruvMutex);
+
+    if (eruvStatus.inEruv)
     {
-      isInEruv = true;
       multiPrinter.println("Inside the eruv.");
+      multiPrinter.print("Distance to edge: ");
+      multiPrinter.print(eruvStatus.distanceToEdge);
+      multiPrinter.println(" m.");
     }
     else
     {
-      isInEruv = false;
       multiPrinter.println("Outside the eruv.");
     }
   }
   else
   {
-    isInEruv = false;
+    xSemaphoreTake(eruvMutex, portMAX_DELAY);
+    gpsFix = GPS.fix;
+    eruvStatus.inEruv = false;
+    eruvStatus.distanceToEdge = -1;
+    xSemaphoreGive(eruvMutex);
     multiPrinter.println("No GPS fix.");
   }
 }
@@ -195,10 +213,10 @@ void setupPrinters()
 {
   // Normal serial
   Serial.begin(115200);
-  Serial.onReceive([]() {
+  Serial.onReceive([]()
+                   {
     String nmea = Serial.readStringUntil('\n');
-    nmeaCheck(nmea);
-  });
+    nmeaCheck(nmea); });
   multiPrinter.addPrinter(&Serial);
 
   // Wifi serial
@@ -221,7 +239,7 @@ void setupPrinters()
 
     // WebSerial is accessible at "<IP Address>/webserial" in browser
     WebSerial.begin(&server);
-
+    multiPrinter.addPrinter(&WebSerial);
     WebSerial.onMessage(nmeaCheck);
 
     // Start server
@@ -229,49 +247,105 @@ void setupPrinters()
   }
 }
 
-void updateLedTask(void *pvParameters) {
-  while (1) {
-    bool localInEruv;
+void updateLedTask(void *pvParameters)
+{
+  bool gpsLedState = false;
+  bool inEruvLedState = false;
+  uint32_t localTimerGpsFix = millis();
+  uint32_t localTimerInEruvBlink = millis();
+  while (1)
+  {
+    EruvStatus localEruvStatus;
+    bool localGpsFix;
     xSemaphoreTake(eruvMutex, portMAX_DELAY);
-    localInEruv = ledInEruv;
+    localEruvStatus = eruvStatus;
+    localGpsFix = gpsFix;
     xSemaphoreGive(eruvMutex);
-    digitalWrite(IN_ERUV_LED, localInEruv ? HIGH : LOW);
-    digitalWrite(OUT_ERUV_LED, localInEruv ? LOW : HIGH);
+
+    // if gps fix then led on, otherwise blink
+    if (localGpsFix)
+    {
+      digitalWrite(GPS_FIX_LED, HIGH);
+      if (localEruvStatus.inEruv && localEruvStatus.distanceToEdge <= CLOSEST_DISTANCE)
+      {
+        digitalWrite(OUT_ERUV_LED, LOW);
+        if (millis() - localTimerInEruvBlink > BLINK_RATE)
+        {
+          localTimerInEruvBlink = millis();
+          inEruvLedState = !inEruvLedState;
+          digitalWrite(IN_ERUV_LED, inEruvLedState ? HIGH : LOW);
+        }
+      }
+      else if (localEruvStatus.inEruv && localEruvStatus.distanceToEdge > CLOSEST_DISTANCE)
+      {
+        digitalWrite(OUT_ERUV_LED, LOW);
+        digitalWrite(IN_ERUV_LED, HIGH);
+      }
+      else
+      {
+        digitalWrite(IN_ERUV_LED, LOW);
+        digitalWrite(OUT_ERUV_LED, HIGH);
+      }
+      gpsLedState = true;
+    }
+    else
+    {
+      digitalWrite(IN_ERUV_LED, LOW);
+      digitalWrite(OUT_ERUV_LED, LOW);
+      if (millis() - localTimerGpsFix > BLINK_RATE)
+      {
+        localTimerGpsFix = millis();
+        gpsLedState = !gpsLedState;
+        digitalWrite(GPS_FIX_LED, gpsLedState ? HIGH : LOW);
+      }
+    }
     vTaskDelay(100 / portTICK_PERIOD_MS); // update every 100ms
   }
 }
 
-void gpsAndEruvTask(void *pvParameters) {
+void gpsAndEruvTask(void *pvParameters)
+{
   uint32_t localTimer = millis();
-  while (1) {
-    if (!debugMode) {
+  while (1)
+  {
+    if (!debugMode)
+    {
       char c = GPS.read();
       if (GPSECHO)
         if (c)
           multiPrinter.print(c);
-      if (GPS.newNMEAreceived()) {
-        if (strstr(GPS.lastNMEA(), "GGA") != NULL) {
+      if (GPS.newNMEAreceived())
+      {
+        if (strstr(GPS.lastNMEA(), "GGA") != NULL)
+        {
           multiPrinter.println(GPS.lastNMEA());
         }
         if (!GPS.parse(GPS.lastNMEA()))
           continue;
       }
     }
-    if (millis() - localTimer > 2000) {
+    if (millis() - localTimer > 2000)
+    {
       localTimer = millis();
-      if (GPS.fix) {
+      if (GPS.fix)
+      {
         multiPrinter.print("\nTime: ");
-        if (GPS.hour < 10) multiPrinter.print('0');
+        if (GPS.hour < 10)
+          multiPrinter.print('0');
         multiPrinter.print(GPS.hour, DEC);
         multiPrinter.print(':');
-        if (GPS.minute < 10) multiPrinter.print('0');
+        if (GPS.minute < 10)
+          multiPrinter.print('0');
         multiPrinter.print(GPS.minute, DEC);
         multiPrinter.print(':');
-        if (GPS.seconds < 10) multiPrinter.print('0');
+        if (GPS.seconds < 10)
+          multiPrinter.print('0');
         multiPrinter.print(GPS.seconds, DEC);
         multiPrinter.print('.');
-        if (GPS.milliseconds < 10) multiPrinter.print("00");
-        else if (GPS.milliseconds > 9 && GPS.milliseconds < 100) multiPrinter.print("0");
+        if (GPS.milliseconds < 10)
+          multiPrinter.print("00");
+        else if (GPS.milliseconds > 9 && GPS.milliseconds < 100)
+          multiPrinter.print("0");
         multiPrinter.println(GPS.milliseconds);
         multiPrinter.print("Date: ");
         multiPrinter.print(GPS.day, DEC);
@@ -285,10 +359,6 @@ void gpsAndEruvTask(void *pvParameters) {
         multiPrinter.println((int)GPS.fixquality);
       }
       updateEruvStatus();
-      // Update shared LED state
-      xSemaphoreTake(eruvMutex, portMAX_DELAY);
-      ledInEruv = isInEruv;
-      xSemaphoreGive(eruvMutex);
     }
     vTaskDelay(10 / portTICK_PERIOD_MS);
   }
@@ -300,8 +370,10 @@ void setup()
 
   pinMode(IN_ERUV_LED, OUTPUT);
   pinMode(OUT_ERUV_LED, OUTPUT);
+  pinMode(GPS_FIX_LED, OUTPUT);
   digitalWrite(IN_ERUV_LED, LOW);
   digitalWrite(OUT_ERUV_LED, HIGH);
+  digitalWrite(GPS_FIX_LED, LOW);
   multiPrinter.println("Starting eruv checker.");
 
   if (!SPIFFS.begin())
@@ -340,7 +412,7 @@ void setup()
 
   eruvMutex = xSemaphoreCreateMutex();
   xTaskCreatePinnedToCore(gpsAndEruvTask, "GPS_Eruv", 4096, NULL, 1, NULL, 0); // Core 0
-  xTaskCreatePinnedToCore(updateLedTask, "LEDs", 2048, NULL, 1, NULL, 1); // Core 1
+  xTaskCreatePinnedToCore(updateLedTask, "LEDs", 2048, NULL, 1, NULL, 1);      // Core 1
 }
 
 void loop()
