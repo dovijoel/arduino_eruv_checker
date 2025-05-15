@@ -9,6 +9,9 @@
 #include <Eruv.h>
 #include <vector>
 #include <MultiPrint.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
 
 MultiPrint multiPrinter;
 
@@ -33,6 +36,9 @@ std::vector<std::vector<Coordinate>> exclusions;
 
 bool isInEruv = false;
 bool debugMode = false;
+
+SemaphoreHandle_t eruvMutex;
+volatile bool ledInEruv = false;
 
 // Function to convert a JSON array to a vector of Coordinates
 std::vector<Coordinate> rawJsonArrayToPolygon(JsonArray jsonArray)
@@ -183,8 +189,6 @@ void updateEruvStatus()
     isInEruv = false;
     multiPrinter.println("No GPS fix.");
   }
-
-  
 }
 
 void setupPrinters()
@@ -225,6 +229,71 @@ void setupPrinters()
   }
 }
 
+void updateLedTask(void *pvParameters) {
+  while (1) {
+    bool localInEruv;
+    xSemaphoreTake(eruvMutex, portMAX_DELAY);
+    localInEruv = ledInEruv;
+    xSemaphoreGive(eruvMutex);
+    digitalWrite(IN_ERUV_LED, localInEruv ? HIGH : LOW);
+    digitalWrite(OUT_ERUV_LED, localInEruv ? LOW : HIGH);
+    vTaskDelay(100 / portTICK_PERIOD_MS); // update every 100ms
+  }
+}
+
+void gpsAndEruvTask(void *pvParameters) {
+  uint32_t localTimer = millis();
+  while (1) {
+    if (!debugMode) {
+      char c = GPS.read();
+      if (GPSECHO)
+        if (c)
+          multiPrinter.print(c);
+      if (GPS.newNMEAreceived()) {
+        if (strstr(GPS.lastNMEA(), "GGA") != NULL) {
+          multiPrinter.println(GPS.lastNMEA());
+        }
+        if (!GPS.parse(GPS.lastNMEA()))
+          continue;
+      }
+    }
+    if (millis() - localTimer > 2000) {
+      localTimer = millis();
+      if (GPS.fix) {
+        multiPrinter.print("\nTime: ");
+        if (GPS.hour < 10) multiPrinter.print('0');
+        multiPrinter.print(GPS.hour, DEC);
+        multiPrinter.print(':');
+        if (GPS.minute < 10) multiPrinter.print('0');
+        multiPrinter.print(GPS.minute, DEC);
+        multiPrinter.print(':');
+        if (GPS.seconds < 10) multiPrinter.print('0');
+        multiPrinter.print(GPS.seconds, DEC);
+        multiPrinter.print('.');
+        if (GPS.milliseconds < 10) multiPrinter.print("00");
+        else if (GPS.milliseconds > 9 && GPS.milliseconds < 100) multiPrinter.print("0");
+        multiPrinter.println(GPS.milliseconds);
+        multiPrinter.print("Date: ");
+        multiPrinter.print(GPS.day, DEC);
+        multiPrinter.print('/');
+        multiPrinter.print(GPS.month, DEC);
+        multiPrinter.print("/20");
+        multiPrinter.println(GPS.year, DEC);
+        multiPrinter.print("Fix: ");
+        multiPrinter.print((int)GPS.fix);
+        multiPrinter.print(" quality: ");
+        multiPrinter.println((int)GPS.fixquality);
+      }
+      updateEruvStatus();
+      // Update shared LED state
+      xSemaphoreTake(eruvMutex, portMAX_DELAY);
+      ledInEruv = isInEruv;
+      xSemaphoreGive(eruvMutex);
+    }
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+  }
+}
+
 void setup()
 {
   setupPrinters();
@@ -241,7 +310,6 @@ void setup()
     return;
   }
   multiPrinter.println("Starting eruv checker.");
-  ;
   if (!SPIFFS.begin())
   {
     multiPrinter.println("Card Mount Failed");
@@ -269,79 +337,13 @@ void setup()
 
   // Ask for firmware version
   GPS.println(PMTK_Q_RELEASE);
+
+  eruvMutex = xSemaphoreCreateMutex();
+  xTaskCreatePinnedToCore(gpsAndEruvTask, "GPS_Eruv", 4096, NULL, 1, NULL, 0); // Core 0
+  xTaskCreatePinnedToCore(updateLedTask, "LEDs", 2048, NULL, 1, NULL, 1); // Core 1
 }
 
 void loop()
 {
-  if (!debugMode) {
-    
-  char c = GPS.read();
-  // if you want to debug, this is a good time to do it!
-  if (GPSECHO)
-    if (c)
-      multiPrinter.print(c);
-  // if a sentence is received, we can check the checksum, parse it...
-  if (GPS.newNMEAreceived())
-  {
-    // a tricky thing here is if we print the NMEA sentence, or data
-    // we end up not listening and catching other sentences!
-    // so be very wary if using OUTPUT_ALLDATA and trying to print out data
-    if (strstr(GPS.lastNMEA(), "GGA") != NULL)
-    { // this also sets the newNMEAreceived() flag to false
-      multiPrinter.println(GPS.lastNMEA());
-    }
-    if (!GPS.parse(GPS.lastNMEA())) // this also sets the newNMEAreceived() flag to false
-      return;                       // we can fail to parse a sentence in which case we should just wait for another
-  }
-}
-
-  // approximately every 2 seconds or so, print out the current stats
-  if (millis() - timer > 2000)
-  {
-    timer = millis(); // reset the timer
-    if (GPS.fix)
-    {
-      multiPrinter.print("\nTime: ");
-      if (GPS.hour < 10)
-      {
-        multiPrinter.print('0');
-      }
-      multiPrinter.print(GPS.hour, DEC);
-      multiPrinter.print(':');
-      if (GPS.minute < 10)
-      {
-        multiPrinter.print('0');
-      }
-      multiPrinter.print(GPS.minute, DEC);
-      multiPrinter.print(':');
-      if (GPS.seconds < 10)
-      {
-        multiPrinter.print('0');
-      }
-      multiPrinter.print(GPS.seconds, DEC);
-      multiPrinter.print('.');
-      if (GPS.milliseconds < 10)
-      {
-        multiPrinter.print("00");
-      }
-      else if (GPS.milliseconds > 9 && GPS.milliseconds < 100)
-      {
-        multiPrinter.print("0");
-      }
-      multiPrinter.println(GPS.milliseconds);
-      multiPrinter.print("Date: ");
-      multiPrinter.print(GPS.day, DEC);
-      multiPrinter.print('/');
-      multiPrinter.print(GPS.month, DEC);
-      multiPrinter.print("/20");
-      multiPrinter.println(GPS.year, DEC);
-      multiPrinter.print("Fix: ");
-      multiPrinter.print((int)GPS.fix);
-      multiPrinter.print(" quality: ");
-      multiPrinter.println((int)GPS.fixquality);
-    }
-    updateEruvStatus();
-    digitalWrite(IN_ERUV_LED, isInEruv ? HIGH : LOW);  // Set the LED pin based on eruv status
-    digitalWrite(OUT_ERUV_LED, isInEruv ? LOW : HIGH); // Set the LED pin based on eruv status
-  }
+  vTaskDelay(1000 / portTICK_PERIOD_MS); // loop not used, just yield
 }
