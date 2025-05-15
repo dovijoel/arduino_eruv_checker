@@ -55,18 +55,17 @@ module enclosure()
         //inner void
         translate([0,0,-case_z/2])roundedBox([inner_x, inner_y, inner_z], 3, true, $fn=fn);
         //usb port opening (centered on Y axis)
-        translate([-5,case_y/2-case_wall,3-case_z]) usbc(2.5);
-        //translate([0,case_y/2-case_wall,5-case_z])rotate([90,0,0])roundedBox([8.5,8,26], 1, true, $fn=fn) usbc();
+        translate([-5,case_y/2-(case_wall+2),3-case_z]) usbc(5);
         
         //inner lid clip indents
-        translate([case_x/2-2,0,3.75-case_z/2])rotate([90,0,0])cylinder(h=20, d=1, $fn=fn, center=true);
-        translate([-(case_x/2-2),0,3.75-case_z/2])rotate([90,0,0])cylinder(h=20, d=1, $fn=fn, center=true);
+        translate([case_x/2-2,0,-case_z+26])rotate([90,0,0])cylinder(h=20, d=1, $fn=fn, center=true);
+        translate([-(case_x/2-2),0,-case_z+26])rotate([90,0,0])cylinder(h=20, d=1, $fn=fn, center=true);
     }
     //bottom (now flush)
     translate([0,0,-case_z])roundedBox([case_x, case_y, 2], 3.97, true, $fn=fn);
     //inner lid clip
-    translate([case_x/2-2,0,4.75-case_z/2])rotate([90,0,0])cylinder(h=20, d=1, $fn=fn, center=true);
-    translate([-(case_x/2-2),0,4.75-case_z/2])rotate([90,0,0])cylinder(h=20, d=1, $fn=fn, center=true);
+    translate([case_x/2-2,0,2-case_z+25])rotate([90,0,0])cylinder(h=20, d=1, $fn=fn, center=true);
+    translate([-(case_x/2-2),0,-case_z+25])rotate([90,0,0])cylinder(h=20, d=1, $fn=fn, center=true);
     // NodeMCU_V3USBC module for visualization
     //translate([0,0,-case_z+7])rotate([180,0,0]) NodeMCU_V3USBC();
 }
@@ -81,15 +80,7 @@ module lid()
             translate([0,0,-2])roundedBox([case_x, case_y, 2], 3.97, true, $fn=fn);
             //lip
             translate([0,0,0])roundedBox([inner_x-2*case_wall, inner_y-2*case_wall, 2], 3, true, $fn=fn);
-            // GPS PA1010D corner pins (4 pins)
-            gps_x = 25.5/2;
-            gps_y = 25.4/2;
-            pin_d = 2;
-            pin_h = 5;
-            for (x = [-gps_x+1.5, gps_x-1.5])
-                for (y = [-gps_y+1.5, gps_y-1.5])
-                    translate([x, y, 1])
-                        cylinder(h=pin_h, d=pin_d, $fn=24);
+            
         }
         //outer indents
         translate([(case_x/2)-1.5,0,-0.5])rotate([90,0,0])cylinder(h=20, d=1, $fn=fn, center=true);
@@ -116,6 +107,16 @@ module lid()
         translate([-2,case_y/2-19,0])rotate([0,0,-30])roundedBox([20,1,10],0.5,true, $fn=fn);
         translate([-6,case_y/2-22,0])rotate([0,0,-30])roundedBox([10,1,10],0.5,true, $fn=fn);
     }
+    // GPS PA1010D corner pins (4 pins)
+            gps_x = 25.5/2;
+            gps_y = 25.4/2;
+            pin_d = 2;
+            pin_h = 7;
+            for (x = [-gps_x+1.5, gps_x-1.5])
+                for (y = [-gps_y+1.5, gps_y-1.5])
+                    translate([x, y,-2])
+                        cylinder(h=pin_h, d=pin_d, $fn=24);
+    
     led_y = -(case_y/2-case_wall-2.5); // y-position at new front edge
         led_z = 0; // on the lid surface
         led_spacing = 12; // spacing between LEDs for wider case
